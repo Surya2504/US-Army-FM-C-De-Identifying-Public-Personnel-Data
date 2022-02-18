@@ -1,0 +1,244 @@
+---
+title: "Army Financial Management & Comptroller (FM&C) - De-Identifying Public Personnel Data"
+output: html_document
+---
+**Group Name**: FANTASTIC 4 
+
+
+## Add R libraries here
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(discrim)
+library(klaR)
+library(kknn)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(vip)
+library(mice)
+library(VIM)
+library(finalfit)
+library(knitr)
+```
+#DATA ELEMENT NAME
+```{r}
+#Agency AGYSUB TEXT
+#Location LOC TEXT
+#Age AGELVL TEXT
+#Education Level EDLVL TEXT
+#General Schedule & Equivalent Grade GSEGRD TEXT
+#Length of Service LOSLVL TEXT
+#Occupation OCC TEXT
+#Occupation Category PATCO TEXT
+#Pay Plan & Grade PPGRD TEXT
+#Salary Level SALLVL TEXT
+#STEM Occupations STEMOCC TEXT
+#Supervisory Status SUPERVIS TEXT
+#Type Appointment TOA TEXT
+#Work Schedule WORKSCH TEXT
+#Work Status WORKSTAT TEXT
+#Date (e.g. 202109) DATECODE TEXT
+#Employment EMPLOYMENT NUMERIC
+#Average Salary SALARY NUMERIC
+#Average Length of Service LOS NUMERIC
+```
+
+```{r message=FALSE, warning=FALSE}
+#import data 1
+
+options(dplyr.summarise.inform = FALSE)
+
+FACTDATA06 <- read.csv("~/Desktop/DAEN690/Project/FEC062021/FACTDATA_JUN2021.txt")
+FACTDATA06
+```
+
+```{r message=FALSE, warning=FALSE}
+#import data 2
+
+options(dplyr.summarise.inform = FALSE)
+
+FACTDATA09 <- read.csv("~/Desktop/DAEN690/Project/FEC092021/FACTDATA_SEP2021.txt")
+FACTDATA09
+```
+```{r message=FALSE, warning=FALSE}
+# rbind data 1 and 2
+
+options(dplyr.summarise.inform = FALSE)
+
+FACTDATA <- rbind(FACTDATA06, FACTDATA09)
+head(FACTDATA)
+```
+```{r message=FALSE, warning=FALSE}
+tail(FACTDATA)
+```
+#Summary of the Data
+
+```{r}
+dim(FACTDATA)
+str(FACTDATA)
+summary(FACTDATA)
+
+```
+
+# Data Cleansing
+```{r}
+# add a column for month June and Sep
+FACTDATA_data <- FACTDATA  %>%
+  add_column( Month = if_else(.$DATECODE == "202106", "JUN", "SEP"))
+head(FACTDATA_data)
+```
+
+
+
+```{r}
+# Finding with missing value, we can see the relationship between the missing data. 
+sum(is.na(FACTDATA))
+FACTDATA_data[FACTDATA_data == "?"] <- NA
+FACTDATA_data[FACTDATA_data == ""] <- NA
+FACTDATA_data[FACTDATA_data == "NA"] <- NA
+sum(is.na(FACTDATA_data))
+md.pattern(FACTDATA_data, plot = TRUE, rotate.names = TRUE)
+
+```
+```{r}
+# Mutate with missing value and removing them since the dataset is very large
+#FACTDATA_C <- FACTDATA[!(is.na(FACTDATA$GSEGRD) | FACTDATA$GSEGRD=="" | is.na(FACTDATA$SALARY) | #FACTDATA$SALARY==""|is.na(FACTDATA$LOS) | FACTDATA$LOS==""| is.na(FACTDATA$EDLVL) | FACTDATA$EDLVL==""),] 
+#sum(is.na(FACTDATA_C))
+```
+
+```{r}
+aggr(FACTDATA_data, numbers = TRUE,text = TRUE, prop = FALSE)
+```
+
+
+
+
+```{r}
+
+FACTDATA_data %>% group_by(Month,SALLVL) %>% 
+                          summarise(n_SALARY = n(),
+                          min_SALARY = min(SALARY),
+                          max_SALARY = max(SALARY),
+                          avg_SALARY = mean(SALARY))
+
+```
+
+
+
+```{r}
+library(GGally)
+explanatory = c( "LOC", "LOS",
+  "AGELVL", "EDLVL", "LOSLVL", 
+  "GSEGRD","OCC", "PATCO", "PPGRD","SALLVL", "EMPLOYMENT", "SALARY" )
+dependent = "Month"
+FACTDATA_data %>% 
+  missing_pairs(dependent, explanatory)
+```
+
+
+
+```{r}
+# view the columns with missing data
+library(finalfit)
+FACTDATA_data %>% 
+  missing_compare(explanatory = c("LOC", "LOS", "AGELVL", "EDLVL", "LOSLVL", "GSEGRD","OCC", "PATCO", "PPGRD","SALLVL", "EMPLOYMENT", "SALARY"),
+
+
+```
+
+
+# Data Analysis
+
+
+```{r}
+FACTDATA_data %>% group_by(Month) %>% 
+                          summarise(n_SALARY = n(),
+                          min_SALARY = min(SALARY),
+                          max_SALARY = max(SALARY),
+                          avg_SALARY = mean(SALARY))
+
+
+```
+### Data Visulatization
+```{r}
+ggplot(FACTDATA_data, aes(x = Month , y = SALARY,fill = Month)) +
+  geom_boxplot() +
+  scale_y_log10() +ggtitle("Month Vs.Salary")
+
+```
+```{r}
+
+FACTDATA_data %>% group_by(Month,AGELVL) %>% 
+                          summarise(n_AGELVL = n(),
+                          avg_LOS = mean(LOS),
+                          avg_SALARY = mean(SALARY))
+
+
+```
+```{r}
+
+ggplot(FACTDATA_data, aes(x = Month)) + 
+  geom_bar(aes(fill = AGELVL), position = position_stack(reverse  = TRUE))+
+  labs(x = "Month",
+       y = "Number of Entries",
+       title = "Month VS. Age", fill = 'Age Level') +
+  coord_flip()
+
+```
+
+
+```{r}
+
+FACTDATA_data1<- FACTDATA_data %>% group_by(Month,AGELVL) %>% 
+                          summarise(n_AGELVL = n(),
+                          min_SALARY = min(SALARY),
+                          max_SALARY = max(SALARY),
+                          avg_SALARY = mean(SALARY))
+
+FACTDATA_data1
+```
+
+
+```{r}
+
+ggplot(FACTDATA_data1, aes(x = n_AGELVL,fill = Month)) + 
+  geom_histogram(bins = 30)+ 
+  labs(x = "Transaction Ratior",
+       y = "Number of Entries",
+       title = "Closed Account VS. Transaction Ratio", fill = 'Closed_Account')
+
+```
+
+
+```{r}
+
+ggplot(FACTDATA_data, aes(x = Month, fill = SALLVL)) + 
+  geom_bar(color="Black") +
+  labs(x = "Month",
+       y = "Number of Entries",
+       title = "Month VS. Salary Level", fill = 'Salary Level') +
+  coord_flip()
+
+```
+## R Markdown
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
